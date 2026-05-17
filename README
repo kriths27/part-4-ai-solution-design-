@@ -1,0 +1,20 @@
+# Part 4: AI Solution Design - Insurance Claim Fraud Detection
+
+This sub-repository contains the comprehensive business problem formulation, data requirement planning, model selection, and responsible AI assessment for an intelligent claim fraud detection and triage solution.
+
+## Repository Structure
+- `solution_report.md`: Detailed business and technical report answering Tasks 1 through 8.
+- `diagrams/solution_architecture.png`: Visual architecture diagram mapping data ingestion, multi-modal neural network fusion, triage logic, and business metrics.
+
+## Key Operational Metrics Utilized (From Baseline KPI Data)
+- **Average Monthly Claims:** 2,778 cases
+- **Baseline Manual Effort:** 453.8 hours/month
+- **Baseline Resolution Cycle Time:** 30.27 hours
+- **Baseline Operational Error/Leakage Rate:** 6.96%
+- **Baseline Customer Satisfaction (CSAT):** 7.04 / 10
+
+## AI-Driven Core Improvements
+- **45%+ Reduction** in manual processing effort via automated low-risk claim fast-tracking.
+- **Resolution Cycle Time cut in half** to under 15 hours.
+- **Error/Fraud Leakage compressed** from 6.96% to under 2.0%.
+- **CSAT improvement** targeted above 8.5/10.
