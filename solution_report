@@ -1,0 +1,154 @@
+# AI Solution Design Report: Insurance Claim Fraud Detection & Triage
+
+## Task 1: Business Domain Selection
+- **Selected Domain:** Insurance
+- **Business Focus:** Property and Casualty (P&C) Automobile Insurance Claims
+
+---
+
+## Task 2: Definition of the Business Problem
+- **What problem is being solved?** Insurance claim fraud accounts for billions of dollars in annual losses across the industry, driving up premium costs for legitimate customers. This solution addresses the problem of detecting fraudulent insurance claims during submission and automatically triaging claims into appropriate processing streams.
+- **Who are the users/stakeholders?**
+  - **Claim Adjusters:** Need assistance in flagging high-risk claims quickly.
+  - **Special Investigations Unit (SIU) Teams:** Internal fraud investigators who receive high-fidelity alerts.
+  - **Insurance Claimants (Customers):** Expect fast, transparent, and fair claim processing.
+  - **Operations & Finance Executives:** Focused on operational cost reduction, fraud loss leakage minimization, and high Customer Satisfaction ($CSAT$) scores.
+- **Current Manual / Traditional Process:**
+  Claims are reviewed manually by entry-level claims handlers or triaged using rigid, rule-based systems (e.g., "If claim is filed within 5 days of policy start, flag it"). Claims that meet these simple thresholds are routed to senior adjusters, while the rest follow a standard manual review pipeline.
+- **Limitations of the Current Process:**
+  - **High Processing Bottlenecks:** Every claim requires some human evaluation, leading to extensive manual processing backlogs.
+  - **Slower Resolution Times:** Customers experience delayed payouts, damaging the firm's brand equity.
+  - **High Error Rates:** Rule-based systems suffer from rigid limitations; they fail to detect sophisticated fraud rings (causing high fraud leakage) while producing many false positives that overwhelm adjusters.
+
+---
+
+## Task 3: Identify the AI Task Type
+- **AI Task Type:** Anomaly Detection / Binary Classification
+- **Suitability Rationale:** The core task is to model the conditional probability $P(Y = 1 \mid X)$, where $Y \in \{0, 1\}$ indicates whether a submitted claim is fraudulent ($1$) or genuine ($0$), given a multi-modal feature set $X$. This is a classic binary classification task, heavily combined with anomaly detection methodologies to account for extreme class imbalance (as fraud typically constitutes less than $5\%$ of all claims). Neural networks excel here because they can map highly complex, non-linear interactions across mixed data formats (tabular metadata and text narratives) without manual feature conjunctions.
+
+---
+
+## Task 4: Data Requirement Plan
+To build a robust fraud detection engine, the AI system requires access to historical, multi-modal data streams.
+
+### 1. Type of Data Needed
+- **Structured Data:** Policy details, claimant demographics, and vehicle/incident metadata.
+- **Unstructured Data:** Free-text descriptions of the accident filled by the claimant, police report text summaries, and digital document uploads (OCR-extracted invoices and damage assessment images).
+
+### 2. Input Features and Target Variables
+- **Structured Inputs ($X_{\text{tab}}$):**
+  - `policy_duration_months` (Continuous): Duration of the policy prior to the accident.
+  - `claim_amount` (Continuous): Total monetary amount claimed.
+  - `past_claims_count` (Discrete): Number of claims filed by the policyholder in the last $5$ years.
+  - `incident_hour` (Discrete): Time of day the incident occurred ($0\text{--}23$).
+  - `incident_type` (Categorical): Collision, theft, vandalism, weather-related.
+  - `policy_holder_age` (Continuous): Age of the primary driver.
+- **Unstructured Inputs ($X_{\text{text}}$):**
+  - `accident_description`: Free-text narrative submitted via the mobile app or portal.
+  - `police_report_text`: Transcribed text from official law enforcement reports.
+- **Target Variable ($Y$):**
+  - `is_fraudulent`: Binary label where $1$ denotes a claim confirmed as fraudulent after complete investigation, and $0$ denotes a verified genuine claim.
+
+### 3. Data Collection Method
+- Historical data will be extracted from the internal Core Claims Management System (CMS) and CRM databases.
+- Text narratives will be collected via digital web forms and mobile application interfaces.
+- Scanned physical police documents and repair receipts will pass through an optical character recognition (OCR) pre-processing pipeline.
+
+### 4. Data Quality Risks
+- **Severe Class Imbalance:** Fraud events are rare, which can bias the neural network toward predicting the majority class (genuine claims). *Mitigation:* Apply weighted Binary Cross-Entropy loss or Focal Loss, and utilize synthetic oversampling techniques.
+- **Noisy text data:** Misspellings, slang, and ungrammatical summaries in customer descriptions. *Mitigation:* Apply text normalization, lemmatization, and leverage pre-trained sub-word tokenizers (e.g., WordPiece).
+- **Missing Fields:** Historic records often miss comprehensive police write-ups. *Mitigation:* Implement robust masking or imputation strategies for missing tabular fields.
+
+---
+
+## Task 5: Model Recommendation
+A **Hybrid Multi-Modal Neural Network Architecture** is recommended to handle both structured operational data and unstructured textual narratives simultaneously.
+
+### Architecture Overview
+1. **Tabular Branch (Feed-Forward Neural Network):** Categorical inputs are mapped via low-dimensional learned Embedding layers. Continuous variables are scaled and passed through $3$ dense layers with $128$, $64$, and $32$ units, utilizing Rectified Linear Unit ($	ext{ReLU}$) activations, Batch Normalization, and Dropout ($p = 0.3$) to suppress overfitting.
+2. **Text Branch (Transformer-Based Model):**
+   Unstructured textual fields are fed into a pre-trained, fine-tuned **DistilBERT** encoder. DistilBERT provides a great balance of semantic text extraction capability and inference speed. The final hidden state corresponding to the `[CLS]` token yields a $768$-dimensional dense vector capturing the narrative context.
+3. **Fusion and Output Layer:**
+   The dense representation from the Tabular Branch and the context vector from the Text Branch are concatenated to form a unified multi-modal feature representation:
+   $$\mathbf{h}_{\text{fusion}} = [\mathbf{h}_{\text{tab}} \, \Vert \, \mathbf{h}_{\text{text}}]$$
+   This fused vector is passed through a final hidden layer ($32$ units, $	ext{ReLU}$) and fed into a single output node with a **Sigmoid** activation function to output a fraud probability score:
+   $$p = \sigma(\mathbf{w}^T \mathbf{h}_{\text{fusion}} + b) \in [0, 1]$$
+
+### Why This Model is Appropriate
+Traditional models like standard Gradient Boosting handle tabular records cleanly but cannot extract nuances from free-text accident summaries (e.g., contradictions between a claimant's statement and an official police description). This deep multi-modal architecture learns joint embeddings, capturing complex cross-modal feature interactions that signal sophisticated fraud.
+
+---
+
+## Task 6: Evaluation Plan
+
+### 1. Technical Metrics
+Due to the acute class imbalance, standard accuracy is an invalid performance indicator. The model will be evaluated using:
+- **Recall (Fraud Catch Rate):** $rac{TP}{TP + FN}$ must be maximized to ensure high-value fraud is not missed.
+- **Precision:** $rac{TP}{TP + FP}$ must be maintained above $75\%$ to avoid overwhelming human adjusters with false alarms.
+- **Area Under the Precision-Recall Curve (AUPRC):** Chosen over ROC-AUC as the primary optimization metric since it isolates performance on the minority class.
+
+### 2. Business Metrics (Connected to Baseline KPI Sample)
+Based on the historical performance data from `business_kpi_sample.csv`, the organizational baseline before AI intervention across $12$ months averages:
+- **Monthly Cases handled:** $\approx 2,778$ claims/month
+- **Manual Processing Hours:** $\approx 453.8$ hours/month
+- **Average Claim Resolution Time:** $\approx 30.27$ hours
+- **Error Rate (Misclassifications/Leaked Fraud):** $\approx 6.96\%$
+- **Customer Satisfaction Score ($CSAT$):** $7.04$ out of $10$
+
+**Post-AI Success Criteria Targets:**
+- **Manual Processing Reduction:** Decrease manual hours by $\ge 45\%$ (reducing average monthly hours from $453.8$ down to $< 250$ hours) by auto-approving low-risk claims.
+- **Cycle Time Reduction:** Decrease average resolution time from $30.27$ hours to $< 15$ hours by instant-triage.
+- **Operational Error Reduction:** Drive the classification error rate down from $6.96\%$ to $< 2.0\%$ via superior automated pattern matching.
+- **Customer Experience Boost:** Increase average $CSAT$ from $7.04$ to $> 8.5$ due to accelerated legitimate claim payouts.
+
+### 3. Possible Failure Cases
+- **Concept / Fraud Drift:** Sophisticated fraud syndicates changing their storytelling patterns to bypass text encoders.
+- **Data Pipeline Ingestion Failures:** Blurry document uploads or faulty OCR outputs leading to empty text features, causing default low-risk scores.
+
+### 4. Human-in-the-Loop Triage Process
+The system establishes a three-tier decision loop based on the predicted fraud probability $p$:
+1. **Low Risk ($p < 0.20$):** **Fast-Track Stream.** Automatically approved for immediate payment without human intervention, directly driving down manual hours and resolution times.
+2. **Medium Risk ($0.20 \le p \le 0.70$):** **Standard Adjusted Stream.** Flagged for manual validation by a standard claim adjuster. The AI highlights the top contributing features via local explanations.
+3. **High Risk ($p > 0.70$):** **Special Investigations Stream.** Routed directly to the Special Investigations Unit (SIU) for deep-dive anti-fraud forensics.
+
+---
+
+## Task 7: Responsible AI Considerations
+
+- **Bias in Training Data:** Historical data may contain biases where claims originating from lower-income zip codes or specific age categories are more frequently labeled or investigated as fraudulent.
+  - *Mitigation:* Explicitly omit sensitive socio-demographic features and zip codes from the training loop. Conduct regular demographic parity and equalized odds fairness evaluations on the model outputs.
+- **Impact of Incorrect Predictions (False Positives):** Flagging an honest customer's claim as fraudulent delays critical financial relief.
+  - *Mitigation:* The system will never autonomously deny or reject a claim. A low probability score can trigger automated approval, but a high probability score only triggers human review. Furthermore, a transparent appeal process is established for any delayed claims.
+- **Data Privacy Concerns:** Handling sensitive PII and incident records presents security risks.
+  - *Mitigation:* Implement end-to-end data encryption (AES-256), enforce strict role-based access control (RBAC), and run automated data maskers to strip PII before feeding text data into text encoders.
+- **Automation Bias and Over-reliance:** Claim adjusters may blindly trust the AI's risk probability without executing proper manual due diligence.
+  - *Mitigation:* Provide plain-language feature importance explanations (e.g., using attention maps or Integrated Gradients) alongside the risk score. Mandate continuous training for adjusters to treat the model score as an advisory metric rather than absolute truth.
+
+---
+
+## Task 8: Final Solution Summary (One-Page Overview)
+
+### Problem Statement
+Traditional insurance claim processing relies heavily on manual inspections and brittle, rule-based triage. This causes major operational backlogs (averaging $453.8$ manual processing hours per month), slow claim settlement timelines ($30.27$ hours average resolution time), high error/leakage rates ($6.96\%$), and suppressed customer satisfaction ($7.04 / 10$ $CSAT$).
+
+### Proposed AI Solution
+An automated, multi-modal **AI Claim Fraud Detection & Intelligent Triage System** that processes incoming policy and claim data in real-time, outputting a fraud risk score between $0.0$ and $1.0$ to optimize routing.
+
+### Required Data
+- **Structured Fields:** Policy duration, total claim amount, history of past claims, time/date metrics, and incident classifications.
+- **Unstructured Fields:** Free-text customer incident descriptions and OCR-processed official police accident write-ups.
+
+### Model Recommendation
+A **Multi-Modal Hybrid Neural Network Architecture** comprising:
+- A Feed-Forward Neural Network branch with learned embeddings for tabular feature representations.
+- A fine-tuned DistilBERT Transformer branch to capture semantic anomalies within text narratives.
+- A dense concatenation fusion layer followed by a Sigmoid classifier to yield continuous risk probabilities.
+
+### Expected Business Impact
+- **Operational Savings:** Over $45\%$ reduction in manual claim processing hours via automation.
+- **Customer Excellence:** Slashing average claim resolution times by half (from $30.27$ hours to $< 15$ hours), pushing $CSAT$ above $8.5$.
+- **Financial Protection:** Reducing fraud leakage and misclassification errors from $6.96\%$ to under $2.0\%$.
+
+### Key Risks & Mitigation Plan
+- **Risk:** Systemic data bias leading to unfair investigation rates for certain groups. *Mitigation:* Strip demographic indicators and perform rigorous fairness compliance audits.
+- **Risk:** Automation bias where adjusters stop thinking critically. *Mitigation:* Provide model explainability tools and enforce a strict Human-in-the-Loop protocol where autonomous rejections are prohibited.
